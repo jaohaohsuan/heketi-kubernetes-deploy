@@ -5,13 +5,13 @@ metadata:
   name: deploy-heketi
 data:
   deploy-heketi: |-
-    #!/bin/bash
+    #!/bin/bash -e
 
-    while [ ! -f /var/heketi/manifests/heketi-storage.json ]
-    do
-      sleep 2
-      echo -n "waiting for '/var/heketi/manifests/heketi-storage.json'"
-    done
+    # while [ ! -f /var/heketi/manifests/heketi-storage.json ]
+    # do
+    #   sleep 2
+    #   echo -n "waiting for '/var/heketi/manifests/heketi-storage.json'"
+    # done
     kubectl apply -f /var/heketi/manifests/heketi-storage.json
     kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
     kubectl apply -f /opt/bin/heketi-deployment.yaml
@@ -97,7 +97,7 @@ metadata:
   name: heketi-topology
 data:
   provision: |-
-    #!/bin/bash
+    #!/bin/bash -e
     KUBE_TOKEN=$(</var/run/secrets/kubernetes.io/serviceaccount/token)
     json_raw=`curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/nodes?labelSelector=storagenode=glusterfs`
 

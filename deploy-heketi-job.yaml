@@ -40,7 +40,6 @@ spec:
         command:
           - "sh"
           - "/opt/bin/deploy-heketi"
-          - "echo 'running since '`date +'%r'`; while true; do sleep 1; done"
         volumeMounts:
           - mountPath: /opt/bin
             name: deploy-heketi
