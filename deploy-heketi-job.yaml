@@ -1,0 +1,57 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: deploy-heketi
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        pod.beta.kubernetes.io/init-containers: '[
+          {
+            "name": "init",
+            "image": "heketi/heketi:dev",
+            "imagePullPolicy": "IfNotPresent",
+            "command": [ "sh", "-c", "cat /opt/bin/deploy.sh" ],
+            "env": [
+              {
+                "name": "HEKETI_CLI_SERVER",
+                "value": "http://heketi:8080"
+              }
+            ],
+            "volumeMounts": [
+              {
+                "mountPath": "/var/heketi/manifests",
+                "name": "heketi-storage-manifests"
+              },
+              {
+                "mountPath": "/opt/bin",
+                "name": "heketi-topology"
+              }
+            ]
+          }
+        ]'
+    spec:
+      restartPolicy: Never
+      containers:
+      - image: gcr.io/google_containers/hyperkube-amd64:v1.5.1
+        name: hyperkube
+        command:
+          - "sh"
+          - "-c"
+          - "echo 'running since '`date +'%r'`; while true; do sleep 1; done"
+        volumeMounts:
+          - mountPath: /opt/bin
+            name: deploy-heketi
+          - mountPath: /var/heketi/manifests
+            name: heketi-storage-manifests
+      volumes:
+        - name: deploy-heketi 
+          configMap:
+            name: deploy-heketi
+        - name: heketi-storage-manifests
+          emptyDir: {}
+        - name: heketi-topology
+          configMap:
+            name: heketi-topology
