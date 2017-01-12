@@ -13,7 +13,7 @@ spec:
             "name": "init",
             "image": "heketi/heketi:dev",
             "imagePullPolicy": "IfNotPresent",
-            "command": [ "sh", "-c", "cat /opt/bin/deploy.sh" ],
+            "command": [ "sh", "/opt/bin/provision" ],
             "env": [
               {
                 "name": "HEKETI_CLI_SERVER",
@@ -39,7 +39,7 @@ spec:
         name: hyperkube
         command:
           - "sh"
-          - "-c"
+          - "/opt/bin/deploy-heketi"
           - "echo 'running since '`date +'%r'`; while true; do sleep 1; done"
         volumeMounts:
           - mountPath: /opt/bin

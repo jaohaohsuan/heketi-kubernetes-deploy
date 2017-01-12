@@ -4,7 +4,7 @@ kind: ConfigMap
 metadata:
   name: deploy-heketi
 data:
-  deploy-heketi.sh: |-
+  deploy-heketi: |-
     #!/bin/bash
 
     while [ ! -f /var/heketi/manifests/heketi-storage.json ]
@@ -96,7 +96,7 @@ kind: ConfigMap
 metadata:
   name: heketi-topology
 data:
-  deploy.sh: |-
+  provision: |-
     #!/bin/bash
     KUBE_TOKEN=$(</var/run/secrets/kubernetes.io/serviceaccount/token)
     json_raw=`curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/nodes?labelSelector=storagenode=glusterfs`
