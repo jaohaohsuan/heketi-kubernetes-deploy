@@ -12,9 +12,10 @@ data:
     #   sleep 2
     #   echo -n "waiting for '/var/heketi/manifests/heketi-storage.json'"
     # done
-    kubectl apply -f /var/heketi/manifests/heketi-storage.json
-    kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
-    kubectl apply -f /opt/bin/heketi-deployment.yaml
+    # while true; do sleep 2; done
+    /hyperkube kubectl apply -f /var/heketi/manifests/heketi-storage.json
+    /hyperkube kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
+    /hyperkube kubectl apply -f /opt/bin/heketi-deployment.yaml
 
   heketi-deployment.yaml: |-
     ---
@@ -97,7 +98,7 @@ metadata:
   name: heketi-topology
 data:
   provision: |-
-    #!/bin/bash -e
+    #!/bin/bash
     KUBE_TOKEN=$(</var/run/secrets/kubernetes.io/serviceaccount/token)
     json_raw=`curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/nodes?labelSelector=storagenode=glusterfs`
 
@@ -114,7 +115,7 @@ data:
 
     if __name__ == '__main__':
 
-        devices = ['/dev/sdb']
+        devices = ['/dev/vdb']
         topo = { 'clusters': [ { 'nodes': [] } ] }
 
         for item in raw['items']:
@@ -136,7 +137,6 @@ data:
     ) > /topology.json
 
     heketi-cli topology load --json=/topology.json 
+    sleep 10
     heketi-cli setup-openshift-heketi-storage
-    if [[ ${?} == 0 ]]; then
-      cp /heketi-storage.json /var/heketi/manifests/
-    fi  
+    cp -fv /heketi-storage.json /var/heketi/manifests/
