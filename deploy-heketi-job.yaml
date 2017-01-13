@@ -13,11 +13,11 @@ spec:
             "name": "init",
             "image": "heketi/heketi:dev",
             "imagePullPolicy": "IfNotPresent",
-            "command": [ "sh", "/opt/bin/provision" ],
+            "command": [ "bash", "/opt/bin/provision" ],
             "env": [
               {
                 "name": "HEKETI_CLI_SERVER",
-                "value": "http://heketi:8080"
+                "value": "http://deploy-heketi:8080"
               }
             ],
             "volumeMounts": [
@@ -38,7 +38,7 @@ spec:
       - image: gcr.io/google_containers/hyperkube-amd64:v1.5.1
         name: hyperkube
         command:
-          - "sh"
+          - "bash"
           - "/opt/bin/deploy-heketi"
         volumeMounts:
           - mountPath: /opt/bin
