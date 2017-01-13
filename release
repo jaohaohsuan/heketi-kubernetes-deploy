@@ -1,0 +1,4 @@
+#!/bin/bash
+mkdir -p manifests
+cat deploy-heketi-configMap.yaml > manifests/deploy-heketi.yaml
+cat deploy-heketi-job.yaml >> manifests/deploy-heketi.yaml

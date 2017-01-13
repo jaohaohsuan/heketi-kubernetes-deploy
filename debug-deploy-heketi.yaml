@@ -1,0 +1,44 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: deploy-heketi-dubug
+  namespace: default
+spec:
+  containers:
+  - image: gcr.io/google_containers/hyperkube-amd64:v1.5.1
+    name: hyperkube
+    command:
+      - "sh"
+      - "-c"
+      - "echo 'running since '`date +'%r'`; while true; do sleep 1; done"
+    volumeMounts:
+      - mountPath: /opt/bin
+        name: deploy-heketi
+      - mountPath: /var/heketi/manifests
+        name: heketi-storage-manifests
+  - image: heketi/heketi:dev
+    env:
+    - name: HEKETI_CLI_SERVER
+      value: http://heketi:8080
+    - name: "NODE_DEVICES"
+      value: "[ '/dev/vdb' ]"
+    command:
+      - "sh"
+      - "-c"
+      - "echo 'running since '`date +'%r'`; while true; do sleep 1; done"
+    name: heketi
+    volumeMounts:
+      - mountPath: /var/heketi/manifests
+        name: heketi-storage-manifests
+      - mountPath: /opt/bin
+        name: heketi-topology
+  volumes:
+    - name: deploy-heketi 
+      configMap:
+        name: deploy-heketi
+    - name: heketi-storage-manifests
+      emptyDir: {}
+    - name: heketi-topology
+      configMap:
+        name: heketi-topology

@@ -18,6 +18,10 @@ spec:
               {
                 "name": "HEKETI_CLI_SERVER",
                 "value": "http://deploy-heketi:8080"
+              },
+              { 
+                "name": "NODE_DEVICES",
+                "value": "[ \"/dev/vdb\" ]"
               }
             ],
             "volumeMounts": [

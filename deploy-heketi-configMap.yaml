@@ -100,43 +100,78 @@ data:
   provision: |-
     #!/bin/bash
     KUBE_TOKEN=$(</var/run/secrets/kubernetes.io/serviceaccount/token)
-    json_raw=`curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/nodes?labelSelector=storagenode=glusterfs`
 
-    echo $(python3 - <<END
+    function gluster_readiness {
+      curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/pods?labelSelector=glusterfs-node=pod > /tmp/gluster_pods.json 2>&1
+      echo $(python3 - <<EOF
+    import sys
+    import json
+
+    if __name__ == '__main__':
+        json_raw = json.loads(open('/tmp/gluster_pods.json').read())
+        pods = list((x for x in json_raw['items'] if x['status']['containerStatuses'][0]['ready'] == True))
+        sys.exit(int(len(pods) < 3))
+    EOF
+    )
+    }
+
+    until gluster_readiness
+    do
+      sleep 3
+      echo -ne "Wating glusterfs pods all ready.."
+    done
+
+    function create_topology {
+      curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/nodes?labelSelector=storagenode=glusterfs > /tmp/nodes.json 2>&1
+
+      echo $(python3 - <<END
     import sys
     import json
     import argparse
     import os
 
-    raw = $json_raw
+    raw = json.loads(open('/tmp/nodes.json','r').read())
 
     def getAddrWithType(dic, t):
         return next((x for x in dic['status']['addresses'] if x['type'] == t))['address']
 
     if __name__ == '__main__':
-
-        devices = ['/dev/vdb']
+        devices = $NODE_DEVICES
         topo = { 'clusters': [ { 'nodes': [] } ] }
 
         for item in raw['items']:
-            ipv4 = getAddrWithType(item, 'LegacyHostIP')
-            hostname = getAddrWithType(item, 'Hostname')
-            node = {
-              'node': {
-                'hostnames': {
-                  'manage' : [ ipv4 ] ,
-                  'storage': [ hostname ]
-                },
-                'zone': 1
+          ipv4 = getAddrWithType(item, 'LegacyHostIP')
+          hostname = getAddrWithType(item, 'Hostname')
+          node = {
+            'node': {
+              'hostnames': {
+          'manage' : [ ipv4 ] ,
+          'storage': [ hostname ]
               },
-             'devices': devices
-            }
-            topo['clusters'][0]['nodes'].append(node)
+              'zone': 1
+            },
+           'devices': devices
+          }
+          topo['clusters'][0]['nodes'].append(node)
+
         print(json.dumps(topo))
+        sys.exit(int(len(raw['items']) < 3))
+
     END
-    ) > /topology.json
+      ) > /topology.json
+    }
+
+    until create_topology
+    do
+      echo -ne "retry create topology .."
+    done
 
     heketi-cli topology load --json=/topology.json 
     sleep 10
-    heketi-cli setup-openshift-heketi-storage
+
+    result=`heketi-cli setup-openshift-heketi-storage 2>&1`
+    echo $result
+    if echo $result | grep -q "Error.*Volume.*heketidbstorage alreay exists"; then
+      exit 0
+    fi
     cp -fv /heketi-storage.json /var/heketi/manifests/
