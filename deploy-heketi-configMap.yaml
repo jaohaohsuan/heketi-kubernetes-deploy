@@ -115,10 +115,9 @@ data:
     )
     }
 
-    until gluster_readiness
-    do
+    until [ ! gluster_readiness]; do
       sleep 3
-      echo -ne "Wating glusterfs pods all ready.."
+      echo -ne "Wating glusterfs pods all ready.."\\r
     done
 
     function create_topology {
