@@ -109,8 +109,8 @@ data:
 
     if __name__ == '__main__':
         json_raw = json.loads(open('/tmp/gluster_pods.json').read())
-        pods = list((x for x in json_raw['items'] if x['status']['containerStatuses'][0]['ready'] == True))
-        sys.exit(int(len(pods) < 3))
+        pods = list((x for x in json_raw['items'] if next((c for c in x['status']['conditions'] if c['type'] == 'Ready' and c['status'] == 'True'), None) is not None))
+        print(len(pods))
     EOF
     )
     }
