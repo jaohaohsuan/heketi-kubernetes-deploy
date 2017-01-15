@@ -1,4 +1,7 @@
 #!/bin/bash
 mkdir -p manifests
 cat deploy-heketi-configMap.yaml > manifests/deploy-heketi.yaml
-cat configure-heketi-job.yaml >> manifests/deploy-heketi.yaml
+cat heketi-service-account.yaml \
+	glusterfs-daemonset.yaml \
+	deploy-heketi-deployment.yaml \
+	configure-heketi-job.yaml >> manifests/deploy-heketi.yaml

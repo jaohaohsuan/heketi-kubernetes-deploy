@@ -1,0 +1,416 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: deploy-heketi
+data:
+  deploy-heketi: |-
+    #!/bin/bash -e
+
+    /hyperkube kubectl apply -f /var/heketi/manifests/heketi-storage.json
+    /hyperkube kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
+    /hyperkube kubectl apply -f /opt/bin/heketi-deployment.yaml
+
+    function create_dynamic_provision {
+      # using non-capturing groups
+      heketiIP=`kubectl get svc heketi --no-headers -o yaml| grep -Po '(?<=clusterIP: ).*'`
+      [ ! $heketiIP -z ]; && cat <<EOF | /hyperkube kubectl create -f -
+      ---
+      apiVersion: storage.k8s.io/v1beta1
+      kind: StorageClass
+      metadata:
+        name: default
+      provisioner: kubernetes.io/glusterfs
+      parameters:
+        resturl: "http://$heketiIP:8080"
+      EOF
+    }
+    
+    until create_dynamic_provision
+    do
+      echo -ne "heketi service ip unable to find"\\r
+    done
+
+  heketi-deployment.yaml: |-
+    ---
+    kind: Service
+    apiVersion: v1
+    metadata:
+      name: heketi
+      labels:
+        glusterfs: heketi-service
+        deploy-heketi: support
+      annotations:
+        description: Exposes Heketi Service
+    spec:
+      selector:
+        name: heketi
+      ports:
+      - name: heketi
+        port: 8080
+        targetPort: 8080
+    ---
+    kind: Deployment
+    apiVersion: extensions/v1beta1
+    metadata:
+      name: heketi
+      labels:
+        glusterfs: heketi-deployment
+      annotations:
+        description: Defines how to deploy Heketi
+    spec:
+      replicas: 1
+      template:
+        metadata:
+          name: heketi
+          labels:
+            name: heketi
+            glusterfs: heketi-pod
+        spec:
+          serviceAccountName: heketi-service-account
+          containers:
+          - image: heketi/heketi:dev
+            imagePullPolicy: Always
+            name: heketi
+            env:
+            - name: HEKETI_EXECUTOR
+              value: kubernetes
+            - name: HEKETI_KUBE_USE_SECRET
+              value: "y"
+            - name: HEKETI_FSTAB
+              value: "/var/lib/heketi/fstab"
+            - name: HEKETI_SNAPSHOT_LIMIT
+              value: '14'
+            - name: HEKETI_KUBE_GLUSTER_DAEMONSET
+              value: "y"
+            ports:
+            - containerPort: 8080
+            volumeMounts:
+            - name: db
+              mountPath: "/var/lib/heketi"
+            readinessProbe:
+              timeoutSeconds: 3
+              initialDelaySeconds: 3
+              httpGet:
+                path: "/hello"
+                port: 8080
+            livenessProbe:
+              timeoutSeconds: 3
+              initialDelaySeconds: 30
+              httpGet:
+                path: "/hello"
+                port: 8080
+          volumes:
+          - name: db
+            glusterfs:
+              endpoints: heketi-storage-endpoints
+              path: heketidbstorage
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: heketi-topology
+data:
+  provision: |-
+    #!/bin/bash
+    KUBE_TOKEN=$(</var/run/secrets/kubernetes.io/serviceaccount/token)
+
+    function gluster_readiness {
+      curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/pods?labelSelector=glusterfs-node=pod > /tmp/gluster_pods.json 2>&1
+      python3 - <<EOF
+    import sys
+    import json
+
+    if __name__ == '__main__':
+        json_raw = json.loads(open('/tmp/gluster_pods.json').read())
+        pods = list((x for x in json_raw['items'] if next((c for c in x['status']['conditions'] if c['type'] == 'Ready' and c['status'] == 'True'), None) is not None))
+        sys.exit(int(len(pods) < 3))
+    EOF
+    }
+
+    until gluster_readiness
+    do
+      echo -ne "glusterfs needs 3 pods at least .."\\r
+      sleep 3
+    done
+    ehco "glusterfs is ready"
+
+    function create_topology {
+      curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/nodes?labelSelector=storagenode=glusterfs > /tmp/nodes.json 2>&1
+
+      python3 - <<END
+    import sys
+    import json
+    import argparse
+    import os
+
+    raw = json.loads(open('/tmp/nodes.json','r').read())
+
+    def getAddrWithType(dic, t):
+        return next((x for x in dic['status']['addresses'] if x['type'] == t))['address']
+
+    if __name__ == '__main__':
+        devices = $NODE_DEVICES
+        topo = { 'clusters': [ { 'nodes': [] } ] }
+
+        for item in raw['items']:
+          ipv4 = getAddrWithType(item, 'LegacyHostIP')
+          hostname = getAddrWithType(item, 'Hostname')
+          node = {
+            'node': {
+              'hostnames': {
+          'manage' : [ ipv4 ] ,
+          'storage': [ hostname ]
+              },
+              'zone': 1
+            },
+           'devices': devices
+          }
+          topo['clusters'][0]['nodes'].append(node)
+        f = open('/topology.json', 'w')
+        f.write(json.dumps(topo))
+        f.close()
+        sys.exit(int(len(raw['items']) < 3))
+
+    END
+    }
+
+    until create_topology
+    do
+      echo -ne "createing topology needs at least 3 nodes .."\\r
+    done
+    echo "topology.json saved"
+
+    heketi-cli topology load --json=/topology.json
+    sleep 6
+
+    result=`heketi-cli setup-openshift-heketi-storage 2>&1`
+    echo $result
+    if echo $result | grep -q "Error.*Volume.*heketidbstorage alreay exists"; then
+      exit 0
+    fi
+    cp -fv /heketi-storage.json /var/heketi/manifests/
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: heketi-service-account
+---
+kind: DaemonSet
+apiVersion: extensions/v1beta1
+metadata:
+  name: glusterfs
+  labels:
+    glusterfs: daemonset
+  annotations:
+    description: GlusterFS DaemonSet
+    tags: glusterfs
+spec:
+  template:
+    metadata:
+      name: glusterfs
+      labels:
+        glusterfs-node: pod
+    spec:
+      nodeSelector:
+        storagenode: glusterfs
+      hostNetwork: true
+      containers:
+      - image: gluster/gluster-centos:latest
+        imagePullPolicy: Always
+        name: glusterfs
+        volumeMounts:
+        - name: glusterfs-heketi
+          mountPath: "/var/lib/heketi"
+        - name: glusterfs-run
+          mountPath: "/run"
+        - name: glusterfs-lvm
+          mountPath: "/run/lvm"
+        - name: glusterfs-etc
+          mountPath: "/etc/glusterfs"
+        - name: glusterfs-logs
+          mountPath: "/var/log/glusterfs"
+        - name: glusterfs-config
+          mountPath: "/var/lib/glusterd"
+        - name: glusterfs-dev
+          mountPath: "/dev"
+        - name: glusterfs-misc
+          mountPath: "/var/lib/misc/glusterfsd"
+        - name: glusterfs-cgroup
+          mountPath: "/sys/fs/cgroup"
+        securityContext:
+          capabilities: {}
+          privileged: true
+        readinessProbe:
+          timeoutSeconds: 3
+          initialDelaySeconds: 60
+          exec:
+            command:
+            - "/bin/bash"
+            - "-c"
+            - systemctl status glusterd.service
+        livenessProbe:
+          timeoutSeconds: 3
+          initialDelaySeconds: 60
+          exec:
+            command:
+            - "/bin/bash"
+            - "-c"
+            - systemctl status glusterd.service
+      volumes:
+      - name: glusterfs-heketi
+        hostPath:
+          path: "/var/lib/heketi"
+      - name: glusterfs-run
+      - name: glusterfs-lvm
+        hostPath:
+          path: "/run/lvm"
+      - name: glusterfs-etc
+        hostPath:
+          path: "/etc/glusterfs"
+      - name: glusterfs-logs
+        hostPath:
+          path: "/var/log/glusterfs"
+      - name: glusterfs-config
+        hostPath:
+          path: "/var/lib/glusterd"
+      - name: glusterfs-dev
+        hostPath:
+          path: "/dev"
+      - name: glusterfs-misc
+        hostPath:
+          path: "/var/lib/misc/glusterfsd"
+      - name: glusterfs-cgroup
+        hostPath:
+          path: "/sys/fs/cgroup"
+---
+kind: Service
+apiVersion: v1
+metadata:
+  name: deploy-heketi
+  labels:
+    glusterfs: heketi-service
+    deploy-heketi: support
+  annotations:
+    description: Exposes Heketi Service
+spec:
+  selector:
+    name: deploy-heketi
+  ports:
+  - name: deploy-heketi
+    port: 8080
+    targetPort: 8080
+---
+kind: Deployment
+apiVersion: extensions/v1beta1
+metadata:
+  name: deploy-heketi
+  labels:
+    glusterfs: heketi-deployment
+    deploy-heketi: heketi-deployment
+  annotations:
+    description: Defines how to deploy Heketi
+spec:
+  replicas: 1
+  template:
+    metadata:
+      name: deploy-heketi
+      labels:
+        name: deploy-heketi
+        glusterfs: heketi-pod
+    spec:
+      serviceAccountName: heketi-service-account
+      containers:
+      - image: heketi/heketi:dev
+        imagePullPolicy: IfNotPresent
+        name: deploy-heketi
+        env:
+        - name: HEKETI_EXECUTOR
+          value: kubernetes
+        - name: HEKETI_KUBE_USE_SECRET
+          value: "y"
+        - name: HEKETI_FSTAB
+          value: "/var/lib/heketi/fstab"
+        - name: HEKETI_SNAPSHOT_LIMIT
+          value: '14'
+        - name: HEKETI_KUBE_GLUSTER_DAEMONSET
+          value: "y"
+        ports:
+        - containerPort: 8080
+        volumeMounts:
+        - name: db
+          mountPath: "/var/lib/heketi"
+        readinessProbe:
+          timeoutSeconds: 3
+          initialDelaySeconds: 3
+          httpGet:
+            path: "/hello"
+            port: 8080
+        livenessProbe:
+          timeoutSeconds: 3
+          initialDelaySeconds: 30
+          httpGet:
+            path: "/hello"
+            port: 8080
+      volumes:
+      - name: db
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: configure-heketi
+  namespace: default
+spec:
+  template:
+    metadata:
+      annotations:
+        pod.beta.kubernetes.io/init-containers: '[
+          {
+            "name": "init",
+            "image": "heketi/heketi:dev",
+            "imagePullPolicy": "IfNotPresent",
+            "command": [ "bash", "/opt/bin/provision" ],
+            "env": [
+              {
+                "name": "HEKETI_CLI_SERVER",
+                "value": "http://deploy-heketi:8080"
+              },
+              { 
+                "name": "NODE_DEVICES",
+                "value": "[ \"/dev/vdb\" ]"
+              }
+            ],
+            "volumeMounts": [
+              {
+                "mountPath": "/var/heketi/manifests",
+                "name": "heketi-storage-manifests"
+              },
+              {
+                "mountPath": "/opt/bin",
+                "name": "heketi-topology"
+              }
+            ]
+          }
+        ]'
+    spec:
+      restartPolicy: Never
+      containers:
+      - image: gcr.io/google_containers/hyperkube-amd64:v1.5.1
+        name: hyperkube
+        command:
+          - "bash"
+          - "/opt/bin/deploy-heketi"
+        volumeMounts:
+          - mountPath: /opt/bin
+            name: deploy-heketi
+          - mountPath: /var/heketi/manifests
+            name: heketi-storage-manifests
+      volumes:
+        - name: deploy-heketi 
+          configMap:
+            name: deploy-heketi
+        - name: heketi-storage-manifests
+          emptyDir: {}
+        - name: heketi-topology
+          configMap:
+            name: heketi-topology
