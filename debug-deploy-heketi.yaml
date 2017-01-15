@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: deploy-heketi-dubug
+  name: debug-heketi-config
   namespace: default
 spec:
   containers:
