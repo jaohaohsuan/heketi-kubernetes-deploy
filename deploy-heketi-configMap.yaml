@@ -12,7 +12,8 @@ data:
 
     heketiStorageYaml=/var/heketi/manifests/heketi-storage.yaml
     /hyperkube kubectl convert -f /var/heketi/manifests/heketi-storage.json -o yaml > $heketiStorageYaml
-    cat $heketiStorageYaml /opt/bin/heketi-deployment.yaml > /srv/asset/manifests/heketi-deployment.yaml
+    mkdir -p /srv/asset/manifests/glusterfs
+    cat $heketiStorageYaml /opt/bin/heketi-deployment.yaml > /srv/asset/manifests/glusterfs/heketi-deployment.yaml
     /hyperkube kubectl apply -f !$
     set +x
 
