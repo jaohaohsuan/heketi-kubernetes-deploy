@@ -19,7 +19,7 @@ spec:
                 "name": "HEKETI_CLI_SERVER",
                 "value": "http://deploy-heketi:8080"
               },
-              { 
+              {
                 "name": "NODE_DEVICES",
                 "value": "[ \"/dev/vdb\" ]"
               }
@@ -51,8 +51,8 @@ spec:
             name: deploy-heketi
           - mountPath: /var/heketi/manifests
             name: heketi-storage-manifests
-          - mountPath: /etc/kubernetes/manifests
-            name: etc-kubernetes-manifests
+          - mountPath: /srv/asset/manifests
+            name: srv-asset-manifests
       volumes:
         - name: deploy-heketi
           configMap:
@@ -62,6 +62,6 @@ spec:
         - name: heketi-topology
           configMap:
             name: heketi-topology
-        - name: etc-kubernetes-manifests
+        - name: srv-asset-manifests
           hostPath:
-            path: /etc/kubernetes/manifests
+            path: /srv/asset/manifests

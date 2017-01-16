@@ -8,12 +8,12 @@ data:
     #!/bin/bash -e
 
     set -x
-    rm -fv /etc/kubernetes/manifests/deploy-heketi-deployment.yaml
     /hyperkube kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
 
     heketiStorageYaml=/var/heketi/manifests/heketi-storage.yaml
     /hyperkube kubectl convert -f /var/heketi/manifests/heketi-storage.json -o yaml > $heketiStorageYaml
-    cat $heketiStorageYaml /opt/bin/heketi-deployment.yaml > /etc/kubernetes/manifests/heketi-deployment.yaml
+    cat $heketiStorageYaml /opt/bin/heketi-deployment.yaml > /srv/asset/manifests/heketi-deployment.yaml
+    /hyperkube kubectl apply -f !$
     set +x
 
     function create_dynamic_provision {
