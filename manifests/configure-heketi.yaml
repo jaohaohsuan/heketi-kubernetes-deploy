@@ -7,12 +7,18 @@ data:
   deploy-heketi: |-
     #!/bin/bash -e
 
-    /hyperkube kubectl apply -f /var/heketi/manifests/heketi-storage.json
+    set -x
+    rm -fv /etc/kubernetes/manifests/deploy-heketi-deployment.yaml
     /hyperkube kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
-    /hyperkube kubectl apply -f /opt/bin/heketi-deployment.yaml
+
+    heketiStorageYaml=/var/heketi/manifests/heketi-storage.yaml
+    /hyperkube kubectl convert -f /var/heketi/manifests/heketi-storage.json -o yaml > $heketiStorageYaml
+    cat $heketiStorageYaml /opt/bin/heketi-deployment.yaml > /etc/kubernetes/manifests/heketi-deployment.yaml
+    set +x
 
     function create_dynamic_provision {
       # using non-capturing groups
+      # posible to use dns?
       heketiIP=`kubectl get svc heketi --no-headers -o yaml| grep -Po '(?<=clusterIP: ).*'`
       [ ! $heketiIP -z ]; && cat <<EOF | /hyperkube kubectl create -f -
       ---
@@ -25,7 +31,7 @@ data:
         resturl: "http://$heketiIP:8080"
       EOF
     }
-    
+
     until create_dynamic_provision
     do
       echo -ne "heketi service ip unable to find"\\r
@@ -191,170 +197,6 @@ data:
     fi
     cp -fv /heketi-storage.json /var/heketi/manifests/
 ---
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: heketi-service-account
----
-kind: DaemonSet
-apiVersion: extensions/v1beta1
-metadata:
-  name: glusterfs
-  labels:
-    glusterfs: daemonset
-  annotations:
-    description: GlusterFS DaemonSet
-    tags: glusterfs
-spec:
-  template:
-    metadata:
-      name: glusterfs
-      labels:
-        glusterfs-node: pod
-    spec:
-      nodeSelector:
-        storagenode: glusterfs
-      hostNetwork: true
-      containers:
-      - image: gluster/gluster-centos:latest
-        imagePullPolicy: Always
-        name: glusterfs
-        volumeMounts:
-        - name: glusterfs-heketi
-          mountPath: "/var/lib/heketi"
-        - name: glusterfs-run
-          mountPath: "/run"
-        - name: glusterfs-lvm
-          mountPath: "/run/lvm"
-        - name: glusterfs-etc
-          mountPath: "/etc/glusterfs"
-        - name: glusterfs-logs
-          mountPath: "/var/log/glusterfs"
-        - name: glusterfs-config
-          mountPath: "/var/lib/glusterd"
-        - name: glusterfs-dev
-          mountPath: "/dev"
-        - name: glusterfs-misc
-          mountPath: "/var/lib/misc/glusterfsd"
-        - name: glusterfs-cgroup
-          mountPath: "/sys/fs/cgroup"
-        securityContext:
-          capabilities: {}
-          privileged: true
-        readinessProbe:
-          timeoutSeconds: 3
-          initialDelaySeconds: 60
-          exec:
-            command:
-            - "/bin/bash"
-            - "-c"
-            - systemctl status glusterd.service
-        livenessProbe:
-          timeoutSeconds: 3
-          initialDelaySeconds: 60
-          exec:
-            command:
-            - "/bin/bash"
-            - "-c"
-            - systemctl status glusterd.service
-      volumes:
-      - name: glusterfs-heketi
-        hostPath:
-          path: "/var/lib/heketi"
-      - name: glusterfs-run
-      - name: glusterfs-lvm
-        hostPath:
-          path: "/run/lvm"
-      - name: glusterfs-etc
-        hostPath:
-          path: "/etc/glusterfs"
-      - name: glusterfs-logs
-        hostPath:
-          path: "/var/log/glusterfs"
-      - name: glusterfs-config
-        hostPath:
-          path: "/var/lib/glusterd"
-      - name: glusterfs-dev
-        hostPath:
-          path: "/dev"
-      - name: glusterfs-misc
-        hostPath:
-          path: "/var/lib/misc/glusterfsd"
-      - name: glusterfs-cgroup
-        hostPath:
-          path: "/sys/fs/cgroup"
----
-kind: Service
-apiVersion: v1
-metadata:
-  name: deploy-heketi
-  labels:
-    glusterfs: heketi-service
-    deploy-heketi: support
-  annotations:
-    description: Exposes Heketi Service
-spec:
-  selector:
-    name: deploy-heketi
-  ports:
-  - name: deploy-heketi
-    port: 8080
-    targetPort: 8080
----
-kind: Deployment
-apiVersion: extensions/v1beta1
-metadata:
-  name: deploy-heketi
-  labels:
-    glusterfs: heketi-deployment
-    deploy-heketi: heketi-deployment
-  annotations:
-    description: Defines how to deploy Heketi
-spec:
-  replicas: 1
-  template:
-    metadata:
-      name: deploy-heketi
-      labels:
-        name: deploy-heketi
-        glusterfs: heketi-pod
-    spec:
-      serviceAccountName: heketi-service-account
-      containers:
-      - image: heketi/heketi:dev
-        imagePullPolicy: IfNotPresent
-        name: deploy-heketi
-        env:
-        - name: HEKETI_EXECUTOR
-          value: kubernetes
-        - name: HEKETI_KUBE_USE_SECRET
-          value: "y"
-        - name: HEKETI_FSTAB
-          value: "/var/lib/heketi/fstab"
-        - name: HEKETI_SNAPSHOT_LIMIT
-          value: '14'
-        - name: HEKETI_KUBE_GLUSTER_DAEMONSET
-          value: "y"
-        ports:
-        - containerPort: 8080
-        volumeMounts:
-        - name: db
-          mountPath: "/var/lib/heketi"
-        readinessProbe:
-          timeoutSeconds: 3
-          initialDelaySeconds: 3
-          httpGet:
-            path: "/hello"
-            port: 8080
-        livenessProbe:
-          timeoutSeconds: 3
-          initialDelaySeconds: 30
-          httpGet:
-            path: "/hello"
-            port: 8080
-      volumes:
-      - name: db
----
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -393,6 +235,8 @@ spec:
           }
         ]'
     spec:
+      nodeSelector:
+        config-heketi: support
       restartPolicy: Never
       containers:
       - image: gcr.io/google_containers/hyperkube-amd64:v1.5.1
@@ -405,8 +249,10 @@ spec:
             name: deploy-heketi
           - mountPath: /var/heketi/manifests
             name: heketi-storage-manifests
+          - mountPath: /etc/kubernetes/manifests
+            name: etc-kubernetes-manifests
       volumes:
-        - name: deploy-heketi 
+        - name: deploy-heketi
           configMap:
             name: deploy-heketi
         - name: heketi-storage-manifests
@@ -414,3 +260,6 @@ spec:
         - name: heketi-topology
           configMap:
             name: heketi-topology
+        - name: etc-kubernetes-manifests
+          hostPath:
+            path: /etc/kubernetes/manifests

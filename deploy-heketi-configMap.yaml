@@ -7,12 +7,18 @@ data:
   deploy-heketi: |-
     #!/bin/bash -e
 
-    /hyperkube kubectl apply -f /var/heketi/manifests/heketi-storage.json
+    set -x
+    rm -fv /etc/kubernetes/manifests/deploy-heketi-deployment.yaml
     /hyperkube kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
-    /hyperkube kubectl apply -f /opt/bin/heketi-deployment.yaml
+
+    heketiStorageYaml=/var/heketi/manifests/heketi-storage.yaml
+    /hyperkube kubectl convert -f /var/heketi/manifests/heketi-storage.json -o yaml > $heketiStorageYaml
+    cat $heketiStorageYaml /opt/bin/heketi-deployment.yaml > /etc/kubernetes/manifests/heketi-deployment.yaml
+    set +x
 
     function create_dynamic_provision {
       # using non-capturing groups
+      # posible to use dns?
       heketiIP=`kubectl get svc heketi --no-headers -o yaml| grep -Po '(?<=clusterIP: ).*'`
       [ ! $heketiIP -z ]; && cat <<EOF | /hyperkube kubectl create -f -
       ---
@@ -25,7 +31,7 @@ data:
         resturl: "http://$heketiIP:8080"
       EOF
     }
-    
+
     until create_dynamic_provision
     do
       echo -ne "heketi service ip unable to find"\\r

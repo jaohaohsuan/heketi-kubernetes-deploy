@@ -37,6 +37,8 @@ spec:
           }
         ]'
     spec:
+      nodeSelector:
+        config-heketi: support
       restartPolicy: Never
       containers:
       - image: gcr.io/google_containers/hyperkube-amd64:v1.5.1
@@ -49,8 +51,10 @@ spec:
             name: deploy-heketi
           - mountPath: /var/heketi/manifests
             name: heketi-storage-manifests
+          - mountPath: /etc/kubernetes/manifests
+            name: etc-kubernetes-manifests
       volumes:
-        - name: deploy-heketi 
+        - name: deploy-heketi
           configMap:
             name: deploy-heketi
         - name: heketi-storage-manifests
@@ -58,3 +62,6 @@ spec:
         - name: heketi-topology
           configMap:
             name: heketi-topology
+        - name: etc-kubernetes-manifests
+          hostPath:
+            path: /etc/kubernetes/manifests
