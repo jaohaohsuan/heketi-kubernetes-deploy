@@ -12,9 +12,11 @@ data:
 
     /hyperkube kubectl apply -f /var/heketi/manifests/heketi-storage.json
     cp /var/heketi/manifests/heketi-storage.json /srv/asset/manifests/glusterfs/
+    cp /var/heketi/manifests/topology.json /srv/asset/manifests/glusterfs/
 
     # delete all deploy-heketi resources
     /hyperkube kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
+    rm -vf /srv/asset/manifests/glusterfs/deploy-heketi-deployment.yaml
 
     /hyperkube kubectl apply -f /opt/bin/heketi-deployment.yaml
     set +x
@@ -186,9 +188,11 @@ data:
 
     until create_topology
     do
-      echo -ne "createing topology needs at least 3 nodes .."\\r
+      echo "createing topology needs at least 3 nodes .."
     done
     echo "topology.json saved"
+
+    cp /topology.json /var/heketi/manifests/
 
     heketi-cli topology load --json=/topology.json
     sleep 6
