@@ -19,6 +19,8 @@ data:
     rm -vf /srv/asset/manifests/glusterfs/deploy-heketi-deployment.yaml
 
     /hyperkube kubectl apply -f /opt/bin/heketi-deployment.yaml
+
+
     set +x
 
     function create_dynamic_provision {
@@ -42,6 +44,32 @@ data:
       echo "heketi service ip unable to find"
     done
 
+    until /hyperkube kubectl create -f /opt/bin/pvc-test.yaml
+    do
+      /hyperkube kubectl delete -f /opt/bin/pvc-test.yaml
+      sleep 2
+    done
+
+    until /hyperkube kubectl get pvc pvc-test --no-headers | grep Bound
+    do
+      sleep 2
+    done
+    /hyperkube kubectl delete -f /opt/bin/pvc-test.yaml
+
+  pvc-test.yaml: |-
+    ---
+    kind: "PersistentVolumeClaim"
+    apiVersion: "v1"
+    metadata:
+      name: "pvc-test"
+      annotations:
+        volume.beta.kubernetes.io/storage-class: "default"
+    spec:
+      accessModes:
+        - "ReadWriteOnce"
+      resources:
+        requests:
+          storage: "1Gi"
   heketi-deployment.yaml: |-
     ---
     kind: Service
