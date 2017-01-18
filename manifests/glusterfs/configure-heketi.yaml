@@ -8,13 +8,15 @@ data:
     #!/bin/bash -e
 
     set -x
+    mkdir -p /srv/asset/manifests/glusterfs
+
+    /hyperkube kubectl apply -f /var/heketi/manifests/heketi-storage.json
+    cp /var/heketi/manifests/heketi-storage.json /srv/asset/manifests/glusterfs/
+
+    # delete all deploy-heketi resources
     /hyperkube kubectl delete all,service,jobs,deployment,secret --selector="deploy-heketi"
 
-    heketiStorageYaml=/var/heketi/manifests/heketi-storage.yaml
-    /hyperkube kubectl convert -f /var/heketi/manifests/heketi-storage.json -o yaml > $heketiStorageYaml
-    mkdir -p /srv/asset/manifests/glusterfs
-    cat $heketiStorageYaml /opt/bin/heketi-deployment.yaml > /srv/asset/manifests/glusterfs/heketi-deployment.yaml
-    /hyperkube kubectl apply -f /srv/asset/manifests/glusterfs/heketi-deployment.yaml
+    /hyperkube kubectl apply -f /opt/bin/heketi-deployment.yaml
     set +x
 
     function create_dynamic_provision {
