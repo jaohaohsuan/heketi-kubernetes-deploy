@@ -24,8 +24,8 @@ spec:
                 "value": "http://deploy-heketi:8080"
               },
               {
-                "name": "NODE_DEVICES_REGX",
-                "value": "(s|v)d(b|c)$"
+                "name": "NODE_DEVICES_PATTERN",
+                "value": "/dev/[sv]d[bc]"
               }
             ],
             "volumeMounts": [

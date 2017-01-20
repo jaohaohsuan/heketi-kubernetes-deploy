@@ -153,7 +153,7 @@ data:
   provision: |-
     #!/bin/bash
     KUBE_TOKEN=$(</var/run/secrets/kubernetes.io/serviceaccount/token)
-    NODE_DEVICES="[ `find /dev | egrep $NODE_DEVICES_REGX | xargs printf "'%s'," | sed 's/,$//'` ]"
+    NODE_DEVICES="[ `echo $NODE_DEVICES_PATTERN | sed -e "s/ /','/g" -e "s/\(.*\)/'\1'/g"` ]"
 
     function gluster_readiness {
       curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/pods?labelSelector=glusterfs-node=pod > /tmp/gluster_pods.json 2>&1
@@ -173,7 +173,7 @@ data:
       echo -ne "glusterfs needs 3 pods at least .."\\r
       sleep 3
     done
-    ehco "glusterfs is ready"
+    echo "glusterfs is ready"
 
     function create_topology {
       curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/nodes?labelSelector=storagenode=glusterfs > /tmp/nodes.json 2>&1
