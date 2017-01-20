@@ -21,7 +21,7 @@ spec:
             "env": [
               {
                 "name": "HEKETI_CLI_SERVER",
-                "value": "http://deploy-heketi:8080"
+                "value": "http://deploy-heketi.default.svc.cluster.local:8080"
               },
               {
                 "name": "NODE_DEVICES_PATTERN",
@@ -47,7 +47,7 @@ spec:
     spec:
       restartPolicy: Never
       containers:
-      - image: gcr.io/google_containers/hyperkube-amd64:v1.5.1
+      - image: gcr.io/google_containers/hyperkube-amd64:v1.5.2
         name: hyperkube
         command:
           - "bash"
