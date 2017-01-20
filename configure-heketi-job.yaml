@@ -24,14 +24,18 @@ spec:
                 "value": "http://deploy-heketi:8080"
               },
               {
-                "name": "NODE_DEVICES",
-                "value": "[ \"/dev/vdb\" ]"
+                "name": "NODE_DEVICES_REGX",
+                "value": "(s|v)d(b|c)$"
               }
             ],
             "volumeMounts": [
               {
                 "mountPath": "/var/heketi/manifests",
                 "name": "heketi-storage-manifests"
+              },
+              {
+                "mountPath": "/dev",
+                "name": "dev"
               },
               {
                 "mountPath": "/opt/bin",
@@ -67,3 +71,6 @@ spec:
         - name: srv-asset-manifests
           hostPath:
             path: /srv/asset/manifests
+        - name: dev
+          hostPath:
+            path: /dev

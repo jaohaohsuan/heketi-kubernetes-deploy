@@ -153,6 +153,7 @@ data:
   provision: |-
     #!/bin/bash
     KUBE_TOKEN=$(</var/run/secrets/kubernetes.io/serviceaccount/token)
+    NODE_DEVICES="[ `find /dev | egrep $NODE_DEVICES_REGX | xargs printf "'%s'," | sed 's/,$//'` ]"
 
     function gluster_readiness {
       curl -sSk -H "Authorization: Bearer $KUBE_TOKEN" https://$KUBERNETES_SERVICE_HOST:$KUBERNETES_PORT_443_TCP_PORT/api/v1/pods?labelSelector=glusterfs-node=pod > /tmp/gluster_pods.json 2>&1
@@ -257,14 +258,18 @@ spec:
                 "value": "http://deploy-heketi:8080"
               },
               {
-                "name": "NODE_DEVICES",
-                "value": "[ \"/dev/vdb\" ]"
+                "name": "NODE_DEVICES_REGX",
+                "value": "(s|v)d(b|c)$"
               }
             ],
             "volumeMounts": [
               {
                 "mountPath": "/var/heketi/manifests",
                 "name": "heketi-storage-manifests"
+              },
+              {
+                "mountPath": "/dev",
+                "name": "dev"
               },
               {
                 "mountPath": "/opt/bin",
@@ -300,3 +305,6 @@ spec:
         - name: srv-asset-manifests
           hostPath:
             path: /srv/asset/manifests
+        - name: dev
+          hostPath:
+            path: /dev
