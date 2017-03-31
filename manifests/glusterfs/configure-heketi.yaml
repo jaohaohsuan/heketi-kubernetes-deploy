@@ -281,7 +281,7 @@ spec:
     spec:
       restartPolicy: Never
       containers:
-      - image: gcr.io/google_containers/hyperkube-amd64:v1.5.3
+      - image: gcr.io/google_containers/hyperkube-amd64:v1.5.6
         name: hyperkube
         command:
           - "bash"
